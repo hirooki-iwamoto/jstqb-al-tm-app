@@ -721,7 +721,11 @@ table { border-collapse: collapse; }
      下限の言い換えで、実際の選択肢は --tap-choice 56px 以上になる */
   --tap-btn:    48px;
   --tap-choice: 56px;
-  --tap-hero:   72px;   /* ホームの「続ける」 */
+  --tap-hero:   56px;   /* ホームの主ボタン。72px は「下限」ではなく「主役だから大きくした」
+                           値だったが、390px の実機で縦に場所を取りすぎていた。
+                           主役であることは、高さではなく 面（色面の中で唯一の白い塊）と
+                           文字の大きさ（--fs-1）で作る。--tap-choice と同値だが役割が違う
+                           ので別のトークンのままにする（片方だけ動かせる余地を残す）。 */
 
   /* -- 線幅と焦点の輪（余白の5段とは別の軸。ここ以外に生の値を書かない） --- */
   --hair:    1px;   /* 仕切り・枠 */
@@ -1110,7 +1114,7 @@ a { color: var(--act); }
 .act-hero {
   width: 100%;
   min-height: var(--tap-hero);
-  font-size: var(--fs-2);
+  font-size: var(--fs-1);   /* 高さを詰めたぶん、文字で主役を作る */
   background: var(--act);
   color: var(--ink-on);
   border-radius: var(--r-ctl);
@@ -1645,7 +1649,9 @@ a { color: var(--act); }
 }
 /* 主たる操作のほうを大きく保つ。48pxは下限であって、再開と破棄が同じ大きさでよい
    という意味ではない（同じ大きさだと、取り返しのつかない側が同格に見える） */
-.resume-acts .act-main { min-width: calc(var(--tap-hero) + var(--s5)); }
+/* 幅の下限。破棄（52px）のおよそ2倍。主ボタンの「高さ」のトークンに相乗りしていたので、
+   高さを詰めたときに巻き込まれないよう、幅は幅で書く */
+.resume-acts .act-main { min-width: calc(var(--tap-btn) * 2); }
 
 /* 予想得点（§8.4） */
 .forecast-head { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
@@ -6745,49 +6751,100 @@ a { color: var(--act); }
     var panel = h('div', 'brandpanel');
     var pw = wrap();
 
-    /* リング（分母＝今日やると決めた問題数、分子＝今日解いた数） */
+    /* 中断中のセッション。主ボタンの文言と、下の「中断中」の枠の両方が使う。 */
+    var act = Rec.activeSessions(c.rec);
+    var actives = [];
+    if (act.practice) actives.push(act.practice);
+    if (act.exam) actives.push(act.exam);
+    /* 新しいほうを主ボタンが引き受ける。同じ時刻なら模試を先に —— 模試だけが
+       残り時間を持っていて、放っておくと時間切れになる。 */
+    actives.sort(function (x, y) {
+      var d = ALTM.util.parseAt(y.startedAt) - ALTM.util.parseAt(x.startedAt);
+      if (d) return d;
+      return (y.mode === 'exam' ? 1 : 0) - (x.mode === 'exam' ? 1 : 0);
+    });
+
+    /* リング（分母＝今日やると決めた問題数、分子＝今日解いた数）。
+       ★何の 0 / 10 なのかを、リングの中と下の両方に書く。
+       初めて開いた人に、説明なしで読めることだけを基準にする。 */
     var today = Stats.today(c.base, c.now);
     var denom = Math.max(1, effectiveCount(stock));
     var box1 = h('div', 'brandpanel-box');
     var grid = h('div', 'brandpanel-grid');
+
+    var ringCol = h('div', null);
     var ring = h('div', 'ring');
     cssVar(ring, '--ring-pct', Math.max(0, Math.min(100, Math.round(today.count / denom * 100))));
     at(ring, 'role', 'img');
-    at(ring, 'aria-label', '今日 ' + today.count + '問 / 目標 ' + denom + '問');
+    at(ring, 'aria-label', '今日 ' + today.count + '問 / 今日の目標 ' + denom + '問');
     var lab = h('div', 'ring-label');
+    add(lab, h('span', 'ring-unit', '今日'));
     add(lab, h('span', 'ring-value num', String(today.count)));
     add(lab, h('span', 'ring-unit', '/ ' + denom + '問'));
     add(ring, lab);
+    add(ringCol, ring);
+    add(ringCol, h('p', 'note', '解いた数 / 今日の目標'));
+    add(grid, ringCol);
 
+    /* 曜日の棒。表しているのは Stats.daily の count＝その日に解いた問題数
+       （白紙・5秒未満・重複は入らない）。高さはその日の目標に対する割合。
+       ★見出しと凡例を必ず添える。記号だけで「何かの棒」に見せない。 */
+    var weekCol = h('div', null);
+    add(weekCol, h('p', 'card-title', 'この7日に解いた数'));
     var week = h('div', 'weekbars');
     at(week, 'role', 'img');
     var daily = Stats.daily(c.base, c.now, 7);
-    var maxDay = 1;
-    for (var d = 0; d < daily.length; d++) if (daily[d].count > maxDay) maxDay = daily[d].count;
-    var weekLabel = [];
+    var weekTotal = 0, weekLabel = [];
     for (var d2 = 0; d2 < daily.length; d2++) {
       var dd = new Date(daily[d2].start);
       var isToday = d2 === daily.length - 1;
+      var cnt = daily[d2].count;
+      weekTotal += cnt;
       var bar = h('div', 'weekbar' + (isToday ? ' is-today' : ''));
       var track = h('div', 'weekbar-track');
       var fill = h('div', 'weekbar-fill');
-      cssVar(fill, '--bar', Math.round(daily[d2].count / maxDay * 100));
+      /* 目標を満杯とする。いちばん多い日を満杯にすると、1問しか解かなかった日でも
+         その日だけなら棒が満杯になり、量を読み違える。 */
+      cssVar(fill, '--bar', Math.max(0, Math.min(100, Math.round(cnt / denom * 100))));
       add(track, fill);
       add(bar, track, h('span', 'weekbar-day', WEEKDAY[dd.getDay()]));
+      var one = (dd.getMonth() + 1) + '/' + dd.getDate() + '（' + WEEKDAY[dd.getDay()] + '）'
+        + (isToday ? '・今日' : '') + ' ' + cnt + '問';
+      at(bar, 'title', one);
       add(week, bar);
-      weekLabel.push(WEEKDAY[dd.getDay()] + ' ' + daily[d2].count + '問');
+      weekLabel.push(one);
     }
-    at(week, 'aria-label', '直近7日の学習量：' + weekLabel.join('、'));
+    at(week, 'aria-label', 'この7日に解いた数：' + weekLabel.join('、'));
+    add(weekCol, week);
+    add(weekCol, h('p', 'note', weekTotal === 0
+      ? 'この7日はまだ1問も解いていません。1回やると、その日の棒が伸びます。'
+      : '棒は日ごとに解いた数（合計 ' + weekTotal + '問）。いちばん上まで伸びると、その日の目標 ' + denom + '問に届いた印です。'));
+    add(grid, weekCol);
 
-    add(grid, ring, week);
     add(box1, grid);
     add(pw, box1);
 
     /* 問題数チップと主ボタン */
     add(pw, countPicker(stock, '今日やる問題数'));
     var n = effectiveCount(stock);
-    var hero = btn('act act-hero', 'start-practice', null, '続ける（' + n + '問）');
-    add(pw, hero);
+    /* ★まだ何もしていない人に「続ける」と言わない。
+       中断中があるならその続きが最も価値のある1タップなので、主ボタンが引き受ける
+       （下の「中断中」の枠からは、その1件ぶんの再開を外して役割を重ねない）。 */
+    var promoted = null;
+    var freshText = today.count === 0 ? ('はじめる（' + n + '問）') : ('続ける（' + n + '問）');
+    if (actives.length) {
+      var top = actives[0];
+      promoted = top.id;
+      var pos = Rec.resumeIndex(top);
+      var at1 = Math.min(pos.index + 1, top.itemIds.length);
+      add(pw, btn('act act-hero', 'resume', { sid: top.id },
+        (top.mode === 'exam' ? '模試の続きから' : '続きから')
+        + '（' + at1 + '問目 / ' + top.itemIds.length + '問）'));
+      /* 続きがあっても、新しく始める道は1タップのまま残す（門 D-T3） */
+      add(pw, btn('act act-sub', 'start-practice', null, '新しく ' + freshText));
+    } else {
+      add(pw, btn('act act-hero', 'start-practice', null, freshText));
+    }
 
     /* 数値カード3つ */
     var cards = h('div', 'statcards');
@@ -6814,14 +6871,12 @@ a { color: var(--act); }
         : 'この端末では記録を保存できません（プライベートモードなど）。解いた内容はこの画面を閉じると消えます。'));
     }
 
-    /* 中断中（あるときだけ。最大2件） */
-    var act = Rec.activeSessions(c.rec);
-    var actives = [];
-    if (act.practice) actives.push(act.practice);
-    if (act.exam) actives.push(act.exam);
+    /* 中断中（あるときだけ。最大2件）。
+       主ボタンが引き受けた1件は、ここでは「破棄」と内訳だけを持つ。
+       両方に「続き」を出すと、どちらが何なのか分からない。 */
     if (actives.length) {
       var fr0 = section('中断中', 'resume');
-      for (var a = 0; a < actives.length; a++) add(fr0, resumeRow(c, actives[a]));
+      for (var a = 0; a < actives.length; a++) add(fr0, resumeRow(c, actives[a], actives[a].id === promoted));
       add(lw, fr0);
     }
 
@@ -6897,7 +6952,7 @@ a { color: var(--act); }
     return c;
   }
 
-  function resumeRow(c, sess) {
+  function resumeRow(c, sess, promoted) {
     var r = h('div', 'resume');
     var pos = Rec.resumeIndex(sess);
     var label = Filter.sessionLabel(sess, Bank);
@@ -6905,9 +6960,11 @@ a { color: var(--act); }
     if (sess.mode === 'exam' && sess.remainingMs !== null && sess.remainingMs !== undefined) {
       detail += '・残り ' + fmtClock(sess.remainingMs);
     }
+    if (promoted) detail += '　← 上の「続きから」がこれです';
     add(r, h('p', 'resume-title', detail));
     var acts = h('div', 'resume-acts');
-    add(acts, btn('act act-main', 'resume', { sid: sess.id }, '再開'));
+    /* 主ボタンが引き受けた1件には、ここで2つ目の「再開」を出さない */
+    if (!promoted) add(acts, btn('act act-main', 'resume', { sid: sess.id }, '再開'));
     add(acts, btn('act act-quiet', 'discard', { sid: sess.id }, '破棄'));
     add(r, acts);
     return r;
