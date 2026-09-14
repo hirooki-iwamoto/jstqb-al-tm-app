@@ -1121,6 +1121,17 @@ a { color: var(--act); }
   box-shadow: var(--sh-2);
 }
 .field-brand .act-hero { background: var(--raise); color: var(--on-raise); }
+/* 紺の色面の上の副ボタン（「新しく 続ける（5問）」）。既定のままだと壊れる：
+   明色では面が --surface（白）で、主ボタンの --raise（白）と**同じ白い塊**になり主従が消える。
+   暗色では面が画面でいちばん暗い色になり、紺の面に対して 1.13:1 で沈む（A-4 と同じ壊れ方）。
+   すぐ上に並ぶチップと同じ組み方にする —— 主は「塗り」、副は「輪郭」。
+   利用者は選択中／非選択のチップで同じ対比を先に見ているので、学び直す必要がない。
+   面 1.29 / 1.30 は 3:1 に届かないが、輪郭が 6.64 / 8.47 で担保する（WCAG 1.4.11）。 */
+.field-brand .act-sub {
+  background: var(--brand-card);
+  border-color: var(--on-brand-2);
+  color: var(--on-brand);
+}
 .act-sub {
   background: var(--surface);
   color: var(--act);
