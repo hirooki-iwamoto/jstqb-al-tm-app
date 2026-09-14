@@ -3878,6 +3878,45 @@ a { color: var(--act); }
   })();
 
   /* ===================================================================
+   * 4.5 出す順（SPEC §7.1 の「並べ替え」は“選び方”の話。ここは“見せ方”）
+   *
+   * 「どの問題を選ぶか」は Sched.pick が決定論で決める（乱数を入れると被覆枠の保証が
+   * 測れなくなる）。★変えるのは選んだあとの並びだけ。
+   *
+   *   - 種はセッションに紐づく（selected choices と同じ考え方：Bank.view は sessionId|itemId）
+   *   - 同じ種なら同じ順。順はセッションの itemIds に焼き付けるので、中断して再開しても
+   *     「3問目」は同じ問題のまま（記録と食い違わない）
+   *   - ただ散らすだけだと偶然かたまるので、同じ学習目標・同じ節が隣り合いにくいように
+   *     貪欲に選び直す。まとめ練習より交互練習のほうが定着が良いことが知られていて、
+   *     節を順に潰す並びはその弱いほうにあたる。5問しかない回で完全な分散は無理なので
+   *     「できる範囲で離す」に留める。
+   * =================================================================== */
+
+  function orderForSession(ids, seed) {
+    if (!isArr(ids) || ids.length <= 1) return (ids || []).slice();
+    var pool = fisherYates(ids, rng(hash32(String(seed === undefined || seed === null ? '' : seed))));
+    var out = [], prevLo = null, prevSec = null;
+    while (pool.length) {
+      var at = 0, best = -1;
+      for (var i = 0; i < pool.length; i++) {
+        var it = Bank.get(pool[i]);
+        var lo = it ? it.lo : null;
+        var sec = it ? String(it.section) : null;
+        var score = 0;
+        if (lo === null || lo !== prevLo) score += 2;     // 学習目標が変わるほうを強く好む
+        if (sec === null || sec !== prevSec) score += 1;  // 節も変わればなお良い
+        if (score > best) { best = score; at = i; if (score === 3) break; }
+      }
+      var id = pool.splice(at, 1)[0];
+      var item = Bank.get(id);
+      prevLo = item ? item.lo : null;
+      prevSec = item ? String(item.section) : null;
+      out.push(id);
+    }
+    return out;
+  }
+
+  /* ===================================================================
    * 5. Rec（記録の素材づくり。派生値は作らない）
    * =================================================================== */
 
@@ -3937,7 +3976,10 @@ a { color: var(--act); }
         profile: o.profile || null,
         // SPEC §4.4。その回が何で絞られたかの事実。表示文字列は持たない（門 A-T8）
         filter: Filter.normalize(o.filter),
-        itemIds: (o.itemIds || []).slice(),
+        /* ★出す順はここで確定して焼き付ける（§4.5 の orderForSession）。
+         * 種はこのセッションの id なので、再開しても同じ順に戻る。
+         * o.order === false を渡せば渡された順のまま（模試の固定セットを素で使いたいとき）。 */
+        itemIds: o.order === false ? (o.itemIds || []).slice() : orderForSession(o.itemIds || [], o.id),
         cursor: 0,
         answers: {},
         flagged: [],
@@ -5556,7 +5598,7 @@ a { color: var(--act); }
     }
 
     return {
-      boxes: boxes, pick: pick, review: review, variantFor: variantFor,
+      boxes: boxes, pick: pick, review: review, variantFor: variantFor, order: orderForSession,
       uncoveredLos: uncoveredLos, uncoveredItems: uncoveredItems, recentItemIds: recentItemIds, countSteps: countSteps,
       INTERVAL_DAYS: INTERVAL_DAYS.slice(), RECENT_N: RECENT_N, COUNT_STEPS: COUNT_STEPS.slice()
     };
