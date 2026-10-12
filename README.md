@@ -2,7 +2,7 @@
 
 JSTQB Advanced Level テストマネージャ試験の学習アプリです。**テスト中のため、予告なく更新・公開停止することがあります。**
 
-👉 **https://hirooki-iwamoto.github.io/jstqb-al-tm-app/**
+👉 **https://mocojoblab.github.io/jstqb-al-tm-app/**
 
 ## 使い方
 
